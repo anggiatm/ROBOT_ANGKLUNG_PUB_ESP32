@@ -19,7 +19,18 @@
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
+TaskHandle_t watch_midi_input_handle;
+TaskHandle_t send_midi_output_handle;
+QueueHandle_t xQueue;
+
 long lastMsg = 0;
+int rx_state = 0;
+
+
+byte cc_type1;
+byte cc_type2;
+byte cc_val1;
+byte cc_val2;
 
 void setup_wifi() {
   delay(10);
@@ -78,29 +89,77 @@ void reconnect() {
   }
 }
 
+
+int bytesToInt(int l_highByte, int l_lowByte) {
+  return ((unsigned int)l_highByte << 8) + l_lowByte;
+}
+
+
+void send_midi_output( void *pvParameters ){
+int ReceivedValue[] = {0,0};
+for( ;; ) {
+  if (xQueueReceive( xQueue, &ReceivedValue, portMAX_DELAY ) == pdPASS){
+    Serial.print(255);
+        Serial.print(" ");
+        Serial.print(ReceivedValue[0]);  
+        Serial.print(" ");
+        Serial.print(highByte(ReceivedValue[1]));
+        Serial.print(" ");
+        Serial.println(lowByte(ReceivedValue[1]));
+  }
+  taskYIELD();
+  }
+}
+
 void setup() {
-  Serial.begin(115200);
-  setup_wifi();
-  client.setServer(MQTT_BROKER, MQTT_PORT);
-  client.setCallback(callback);
+  Serial.begin(38400);
+  // setup_wifi();
+  // client.setServer(MQTT_BROKER, MQTT_PORT);
+  // client.setCallback(callback);
   pinMode(LED_BUILTIN, OUTPUT);
+
+  xQueue = xQueueCreate(100, sizeof(int[2]));
+  if(xQueue != NULL){
+    xTaskCreate(send_midi_output, "SEND MIDI OUTPUT", 1024*2, NULL, 1, NULL);
+    vTaskStartScheduler();
+  }
 }
 
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
+  if (Serial.available()) {
+    rx_state++;
+    switch (rx_state) {
+      case 1: 
+        cc_type1 = Serial.read();
+        if(cc_type1 != 255) {  
+          rx_state = 0;
+        }
+      break;
+      case 2:      
+        cc_type2 = Serial.read();
+        break;        
+      case 3:
+        cc_val1 = Serial.read();     
+        break;
+      case 4:
+        cc_val2 = Serial.read();
+        rx_state = 0;
 
-  long now = millis();
-  if (now - lastMsg > 5000) {
-    lastMsg = now;
-     
-    char message[8];
-    dtostrf(99, 1, 2, message);
-    Serial.print("Data: ");
-    Serial.println(message);
-    client.publish("tes", message);
+        int control = cc_type2;
+        int value = bytesToInt(cc_val1, cc_val2);
+
+        // Serial.print(255);
+        // Serial.print(" ");
+        // Serial.print(control);  
+        // Serial.print(" ");
+        // Serial.print(highByte(value));
+        // Serial.print(" ");
+        // Serial.println(lowByte(value));
+        int a[] = {control, value};
+
+        xQueueSend( xQueue, &a, portMAX_DELAY);
+        break;
+    }
   }
 }
