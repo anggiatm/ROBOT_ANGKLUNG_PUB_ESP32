@@ -9,12 +9,12 @@
 #define ID "PUBLISHER"
 
 // ROBOT TOPIC COM = COMMAND | DEB = DEBUG
-#define TOPIC_1_COM "r1/c"
-#define TOPIC_1_DEB "r1/d"
-#define TOPIC_2_COM "r2/c"
-#define TOPIC_2_DEB "r2/d"
-#define TOPIC_3_COM "r3/c"
-#define TOPIC_3_DEB "r3/d"
+// #define TOPIC_1_COM "r1/c"
+// #define TOPIC_1_DEB "r1/d"
+// #define TOPIC_2_COM "r2/c"
+// #define TOPIC_2_DEB "r2/d"
+// #define TOPIC_3_COM "r3/c"
+// #define TOPIC_3_DEB "r3/d"
 
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
