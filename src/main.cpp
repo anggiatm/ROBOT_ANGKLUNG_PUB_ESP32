@@ -1,26 +1,19 @@
-#include <WiFi.h>
-#include <PubSubClient.h>
+// #include <WiFi.h>
+#include <Arduino.h>
+#include <ESP32Servo.h>
+// #include <PubSubClient.h>
 
-// PARAMETER WAJIB
-#define SSID "wifi_rumah"
-#define PASS "mora170894"
-#define MQTT_BROKER "192.168.1.7"
-#define MQTT_PORT 1883
-#define ID "PUBLISHER"
+// WiFiClient   wifiClient;
+// #define MQTT_BROKER "192.168.1.7"
+// #define MQTT_PORT 1883
+// #define SSID "wifi_rumah"
+// #define PASS "mora170894"
+// #define ID "ROBOT_PUBLISHER"
 
-// ROBOT TOPIC COM = COMMAND | DEB = DEBUG
-// #define TOPIC_1_COM "r1/c"
-// #define TOPIC_1_DEB "r1/d"
-// #define TOPIC_2_COM "r2/c"
-// #define TOPIC_2_DEB "r2/d"
-// #define TOPIC_3_COM "r3/c"
-// #define TOPIC_3_DEB "r3/d"
+// IPAddress IP = {192,168,1,7};
+// PubSubClient MQTTclient( IP, MQTT_PORT, wifiClient );
+// SemaphoreHandle_t sema_MQTT_KeepAlive;
 
-WiFiClient wifiClient;
-PubSubClient client(wifiClient);
-
-TaskHandle_t watch_midi_input_handle;
-TaskHandle_t send_midi_output_handle;
 QueueHandle_t xQueue;
 
 long lastMsg = 0;
@@ -32,73 +25,28 @@ byte cc_type2;
 byte cc_val1;
 byte cc_val2;
 
-void setup_wifi() {
-  vTaskDelay(10);
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(SSID);
-  WiFi.begin(SSID, PASS);
-  while (WiFi.status() != WL_CONNECTED) {
-    vTaskDelay(100);
-    Serial.print(".");
-  }
+Servo myservo;  // create servo object to control a servo
+// 16 servo objects can be created on the ESP32
 
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-}
+// Recommended PWM GPIO pins on the ESP32 include 2,4,12-19,21-23,25-27,32-33 
+// Possible PWM GPIO pins on the ESP32-S2: 0(used by on-board button),1-17,18(used by on-board LED),19-21,26,33-42
 
-void callback(char* topic, byte* message, unsigned int length) {
-  Serial.print("Message arrived on topic: ");
-  Serial.print(topic);
-  Serial.print(". Message: ");
-  String messageTemp;
-  
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)message[i]);
-    messageTemp += (char)message[i];
-  }
-  Serial.println();
-
-  // if (String(topic) == "esp32/output") {
-    Serial.print("Changing output to ");
-    if(messageTemp == "on"){
-      Serial.println("on");
-      digitalWrite(LED_BUILTIN, HIGH);
-    }
-    else if(messageTemp == "off"){
-      Serial.println("off");
-      digitalWrite(LED_BUILTIN, LOW);
-    }
-  // }
-}
-
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    if (client.connect(ID)) {
-      Serial.println("connected");
-      client.subscribe("esp32/output");
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
-      delay(5000);
-    }
-  }
-}
-
+int servoPin = 12;
 
 int bytesToInt(int l_highByte, int l_lowByte) {
   return ((unsigned int)l_highByte << 8) + l_lowByte;
 }
 
-
-void send_midi_output( void *pvParameters ){
-  vTaskDelay(5000);
+void broadcast_command( void *pvParameters )
+{
   int ReceivedValue[] = {0,0};
-  for( ;; ) {
+  String command = "";
+  // while ( !MQTTclient.connected() )
+  // {
+  //   vTaskDelay( 250 );
+  // }
+  for (;;)
+  {
     if (xQueueReceive( xQueue, &ReceivedValue, portMAX_DELAY ) == pdPASS){
       Serial.print(255);
       Serial.print(" ");
@@ -107,43 +55,45 @@ void send_midi_output( void *pvParameters ){
       Serial.print(highByte(ReceivedValue[1]));
       Serial.print(" ");
       Serial.println(lowByte(ReceivedValue[1]));
-    
+      // command = String(ReceivedValue[0]) + " " + String(ReceivedValue[1]);
+
+      // xSemaphoreTake( sema_MQTT_KeepAlive, portMAX_DELAY );
+      // if ( MQTTclient.connected() )
+      // {
+      //   MQTTclient.publish( "tes", command.c_str());
+      // }
+      // xSemaphoreGive( sema_MQTT_KeepAlive );
     }
-    
-    taskYIELD();
   }
+  vTaskDelete ( NULL );
 }
 
-void mqtt( void *pvParameters ){
-  setup_wifi();
-  client.setServer(MQTT_BROKER, MQTT_PORT);
-  client.setCallback(callback);
-  for( ;; ) {
-    if (!client.connected()) {
-      reconnect();
-    }
-    client.loop();
-    taskYIELD();
-  }
-}
 
-void setup() {
+void setup()
+{
   Serial.begin(38400);
-  
-  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(LED_BUILTIN,OUTPUT);
+  ESP32PWM::allocateTimer(0);
+	ESP32PWM::allocateTimer(1);
+	ESP32PWM::allocateTimer(2);
+	ESP32PWM::allocateTimer(3);
+	myservo.setPeriodHertz(50);    // standard 50 hz servo
+	myservo.attach(servoPin, 1000, 2000); // attaches the servo on pin 18 to the servo object
+   delay(500);
+  myservo.write(0);
+  delay(500);
+  // sema_MQTT_KeepAlive   = xSemaphoreCreateBinary();
+  // xSemaphoreGive( sema_MQTT_KeepAlive ); // found keep alive can mess with a publish, stop keep alive during publish
 
   xQueue = xQueueCreate(100, sizeof(int[2]));
   if(xQueue != NULL){
-    xTaskCreatePinnedToCore(send_midi_output, "SEND MIDI OUTPUT", 1024*2, NULL, 1, NULL, -1);
-    xTaskCreatePinnedToCore(mqtt, "mqtt", 1024*2, NULL, 1, NULL, -1);
-    vTaskStartScheduler();
+    // xTaskCreatePinnedToCore( MQTTkeepalive, "MQTTkeepalive", 1024*15, NULL, 3, NULL, 0 );
+    xTaskCreatePinnedToCore( broadcast_command, "broadcast_command", 1024*15, NULL, 4, NULL, 1);
   }
-}
-
+} 
 
 void loop() {
-  if (Serial.available()) {
-      client.publish("tes","hello world");
+    if (Serial.available()) {
     rx_state++;
     switch (rx_state) {
       case 1: 
@@ -164,6 +114,8 @@ void loop() {
 
         int control = cc_type2;
         int value = bytesToInt(cc_val1, cc_val2);
+        int a[] = {control, value};
+        xQueueSend( xQueue, &a, portMAX_DELAY);
 
         // Serial.print(255);
         // Serial.print(" ");
@@ -172,11 +124,15 @@ void loop() {
         // Serial.print(highByte(value));
         // Serial.print(" ");
         // Serial.println(lowByte(value));
-        int a[] = {control, value};
-
-        xQueueSend( xQueue, &a, portMAX_DELAY);
-        break;
-    }
-  }
   
+        if(value > 90 ){
+          digitalWrite(LED_BUILTIN, HIGH);
+          myservo.write(180);   
+        }
+        else {
+          digitalWrite(LED_BUILTIN, LOW);
+          myservo.write(0);
+        }
+    }
+    }
 }
