@@ -33,13 +33,13 @@ byte cc_val1;
 byte cc_val2;
 
 void setup_wifi() {
-  delay(10);
+  vTaskDelay(10);
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(SSID);
   WiFi.begin(SSID, PASS);
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+    vTaskDelay(100);
     Serial.print(".");
   }
 
@@ -96,31 +96,46 @@ int bytesToInt(int l_highByte, int l_lowByte) {
 
 
 void send_midi_output( void *pvParameters ){
-int ReceivedValue[] = {0,0};
-for( ;; ) {
-  if (xQueueReceive( xQueue, &ReceivedValue, portMAX_DELAY ) == pdPASS){
-    Serial.print(255);
-        Serial.print(" ");
-        Serial.print(ReceivedValue[0]);  
-        Serial.print(" ");
-        Serial.print(highByte(ReceivedValue[1]));
-        Serial.print(" ");
-        Serial.println(lowByte(ReceivedValue[1]));
+  vTaskDelay(5000);
+  int ReceivedValue[] = {0,0};
+  for( ;; ) {
+    if (xQueueReceive( xQueue, &ReceivedValue, portMAX_DELAY ) == pdPASS){
+      Serial.print(255);
+      Serial.print(" ");
+      Serial.print(ReceivedValue[0]);  
+      Serial.print(" ");
+      Serial.print(highByte(ReceivedValue[1]));
+      Serial.print(" ");
+      Serial.println(lowByte(ReceivedValue[1]));
+    
+    }
+    
+    taskYIELD();
   }
-  taskYIELD();
+}
+
+void mqtt( void *pvParameters ){
+  setup_wifi();
+  client.setServer(MQTT_BROKER, MQTT_PORT);
+  client.setCallback(callback);
+  for( ;; ) {
+    if (!client.connected()) {
+      reconnect();
+    }
+    client.loop();
+    taskYIELD();
   }
 }
 
 void setup() {
   Serial.begin(38400);
-  // setup_wifi();
-  // client.setServer(MQTT_BROKER, MQTT_PORT);
-  // client.setCallback(callback);
+  
   pinMode(LED_BUILTIN, OUTPUT);
 
   xQueue = xQueueCreate(100, sizeof(int[2]));
   if(xQueue != NULL){
-    xTaskCreate(send_midi_output, "SEND MIDI OUTPUT", 1024*2, NULL, 1, NULL);
+    xTaskCreatePinnedToCore(send_midi_output, "SEND MIDI OUTPUT", 1024*2, NULL, 1, NULL, -1);
+    xTaskCreatePinnedToCore(mqtt, "mqtt", 1024*2, NULL, 1, NULL, -1);
     vTaskStartScheduler();
   }
 }
@@ -128,6 +143,7 @@ void setup() {
 
 void loop() {
   if (Serial.available()) {
+      client.publish("tes","hello world");
     rx_state++;
     switch (rx_state) {
       case 1: 
@@ -162,4 +178,5 @@ void loop() {
         break;
     }
   }
+  
 }
