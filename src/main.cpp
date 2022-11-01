@@ -59,12 +59,67 @@ int counter = 1;
 int ROW_X = 10;
 int ROW_Y = 10;
 int count = 0;
+
+long timeSinceLastModeSwitch = 0;
+
+QueueHandle_t xQueue;
+
+long lastMsg = 0;
+int rx_state = 0;
+
+byte cc_type1;
+byte cc_type2;
+byte cc_val1;
+byte cc_val2;
+
+Servo myservo;
+
+class Channel {
+  private:
+  /* data */
+  public:
+  u_int8_t note_number;
+  u_int8_t channel_number;
+  String note_string;
+
+  Channel(/* args */);
+  ~Channel();
+
+  void setNoteNumber(u_int8_t note_number){
+    Channel::note_number = note_number;
+  }
+  void setChannelNumber(u_int8_t channel_number){
+    Channel::channel_number = channel_number;
+  }
+
+  uint8_t getNoteNumber(){
+    return Channel::note_number;
+  }
+  uint8_t getChannelNumber(){
+    return Channel::channel_number;
+  }
+};
+
+Channel::Channel(/* args */)
+{
+}
+
+Channel::~Channel()
+{
+}
+
+
+int servoPin1 = 12;
+int servoPin2 = 13;
+
 String DISPLAY_DATA[5][3]= {
                   {"","",""},
                   {"","",""},
                   {"","",""},
                   {"","",""},
                   {"","",""}};
+
+Servo CHANNEL[] = {myservo};
 
 const String NOTES[] = {"C-2", "C#-2", "D-2","D#-2", "E-2", "F-2", "F#-2", "G-2", "G#-2", "A-2", "A#-2", "B-2",
                         "C-1", "C#-1", "D-1","D#-1", "E-1", "F-1", "F#-1", "G-1", "G#-1", "A-1", "A#-1", "B-1",
@@ -78,12 +133,15 @@ const String NOTES[] = {"C-2", "C#-2", "D-2","D#-2", "E-2", "F-2", "F#-2", "G-2"
                         "C7", "C#7", "D7","D#7", "E7", "F7", "F#7", "G7", "G#7", "A7", "A#7", "B7",
                         "C8", "C#8", "D8","D#8", "E8", "F8", "F#8", "G8", "G#8", "A8", "A#8", "B8"};
 
+int velocityToPwm(int velocity){
+  return round(map(velocity, 0, 127, 0, 255));
+}
 
-
+void execute(int channel, int velocity){
+  CHANNEL[0].write(velocityToPwm(velocity));
+}
 
 void drawFontFaceDemo() {
-  // Font Demo1
-  // create more fonts at http://oleddisplay.squix.ch/
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_10);
   display.drawString(0, 0, "Hello world");
@@ -91,30 +149,6 @@ void drawFontFaceDemo() {
   display.drawString(0, 10, "Hello world");
   display.setFont(ArialMT_Plain_24);
   display.drawString(0, 26, "Hello world");
-}
-
-void drawTextFlowDemo() {
-  display.setFont(ArialMT_Plain_10);
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawStringMaxWidth(0, 0, 128,
-                             "Lorem ipsum\n dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore." );
-}
-
-void drawTextAlignmentDemo() {
-  // Text alignment demo
-  display.setFont(ArialMT_Plain_10);
-
-  // The coordinates define the left starting point of the text
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(0, 10, "Left aligned (0,10)");
-
-  // The coordinates define the center of the text
-  display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.drawString(64, 22, "Center aligned (64,22)");
-
-  // The coordinates define the right end of the text
-  display.setTextAlignment(TEXT_ALIGN_RIGHT);
-  display.drawString(128, 33, "Right aligned (128,33)");
 }
 
 void drawRectDemo() {
@@ -135,17 +169,6 @@ void drawRectDemo() {
   display.drawVerticalLine(40, 0, 20);
 }
 
-void drawCircleDemo() {
-  for (int i = 1; i < 8; i++) {
-    display.setColor(WHITE);
-    display.drawCircle(32, 32, i * 3);
-    if (i % 2 == 0) {
-      display.setColor(BLACK);
-    }
-    display.fillCircle(96, 32, 32 - i * 3);
-  }
-}
-
 void drawProgressBarDemo() {
   int progress = (counter / 5) % 100;
   // draw the progress bar
@@ -155,47 +178,16 @@ void drawProgressBarDemo() {
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.drawString(64, 15, String(progress) + "%");
 }
-
-
-Demo demos[] = {drawFontFaceDemo, drawTextFlowDemo, drawTextAlignmentDemo, drawRectDemo, drawCircleDemo, drawProgressBarDemo};
-int demoLength = (sizeof(demos) / sizeof(Demo));
-long timeSinceLastModeSwitch = 0;
-
-QueueHandle_t xQueue;
-
-long lastMsg = 0;
-int rx_state = 0;
-
-
-byte cc_type1;
-byte cc_type2;
-byte cc_val1;
-byte cc_val2;
-
-Servo myservo;  // create servo object to control a servo
-// 16 servo objects can be created on the ESP32
-
-// Recommended PWM GPIO pins on the ESP32 include 2,4,12-19,21-23,25-27,32-33 
-// Possible PWM GPIO pins on the ESP32-S2: 0(used by on-board button),1-17,18(used by on-board LED),19-21,26,33-42
-
-int servoPin = 12;
-
 int bytesToInt(int l_highByte, int l_lowByte) {
   return ((unsigned int)l_highByte << 8) + l_lowByte;
 }
 
-void broadcast_command( void *pvParameters )
-{
+void broadcast_command( void *pvParameters ) {
   int ReceivedValue[] = {0,0};
   String command = "";
-  // while ( !MQTTclient.connected() )
-  // {
-  //   vTaskDelay( 250 );
-  // }
-  for (;;)
-  {
-    if (xQueueReceive( xQueue, &ReceivedValue, portMAX_DELAY ) == pdPASS){
-      
+  
+  for (;;){
+    if (xQueueReceive( xQueue, &ReceivedValue, portMAX_DELAY ) == pdPASS) {
       count = count + 1;
       display.clear();
       display.setFont(ArialMT_Plain_10);
@@ -203,6 +195,8 @@ void broadcast_command( void *pvParameters )
       display.drawString(10, 0, "Val");
       display.drawString(40, 0, "Not");
       display.drawString(70, 0, "Vel");
+
+      
       
       if (sizeof(DISPLAY_DATA) > 4){
         // int b[] = {count+1, count+5, count+5};
@@ -214,17 +208,16 @@ void broadcast_command( void *pvParameters )
         DISPLAY_DATA[0][0] = String(ReceivedValue[0]);
         DISPLAY_DATA[0][1] = NOTES[ReceivedValue[0]];
         DISPLAY_DATA[0][2] = String(ReceivedValue[1]);
-  }
+      }
 
+      for(int data = 0; data<5; data++){
+        for(int row = 0; row<3; row++){
+          display.drawString(ROW_Y + (30 * row), ROW_X + (10 * data), String(DISPLAY_DATA[data][row]));
+        }
+      }
 
-  for(int data = 0; data<5; data++){
-    for(int row = 0; row<3; row++){
-      display.drawString(ROW_Y + (30 * row), ROW_X + (10 * data), String(DISPLAY_DATA[data][row]));
-    }
-  }
-
-  // display.drawString(60, 50, String(count));
-  display.display();
+      // display.drawString(60, 50, String(count));
+      display.display();
 
       Serial.print(255);
       Serial.print(" ");
@@ -233,6 +226,13 @@ void broadcast_command( void *pvParameters )
       Serial.print(highByte(ReceivedValue[1]));
       Serial.print(" ");
       Serial.println(lowByte(ReceivedValue[1]));
+
+      if (ReceivedValue[0] == 67){
+        
+      execute(0, ReceivedValue[1]);
+      }
+
+
       // command = String(ReceivedValue[0]) + " " + String(ReceivedValue[1]);
 
       // xSemaphoreTake( sema_MQTT_KeepAlive, portMAX_DELAY );
@@ -247,6 +247,9 @@ void broadcast_command( void *pvParameters )
 }
 
 
+Demo demos[] = {drawFontFaceDemo, drawRectDemo, drawProgressBarDemo};
+int demoLength = (sizeof(demos) / sizeof(Demo));
+
 void setup() {
   Serial.begin(38400);
   display.init();
@@ -260,7 +263,7 @@ void setup() {
   ESP32PWM::allocateTimer(2);
   ESP32PWM::allocateTimer(3);
   myservo.setPeriodHertz(50);    // standard 50 hz servo
-	myservo.attach(servoPin, 1000, 2000); // attaches the servo on pin 18 to the servo object
+	myservo.attach(servoPin1, 1000, 2000); // attaches the servo on pin 18 to the servo object
   delay(500);
   myservo.write(0);
   delay(500);
@@ -274,13 +277,7 @@ void setup() {
   }
 }
 
-
-
-
 void loop() {
-  
-
-  // delay(10);
   if (Serial.available()) {
     rx_state++;
     switch (rx_state) {
@@ -312,7 +309,6 @@ void loop() {
         // Serial.print(highByte(value));
         // Serial.print(" ");
         // Serial.println(lowByte(value));
-  
         // if(value > 90 ){
         //   digitalWrite(LED_BUILTIN, HIGH);
         //   myservo.write(180);   
@@ -322,5 +318,5 @@ void loop() {
         //   myservo.write(0);
         // }
     }
-    }
+  }
 }
