@@ -4,6 +4,37 @@
 #include <U8g2lib.h>
 #include <Wire.h>
 
+#include <Adafruit_PWMServoDriver.h>
+
+Adafruit_PWMServoDriver pwm0 = Adafruit_PWMServoDriver(0x40);
+Adafruit_PWMServoDriver pwm1 = Adafruit_PWMServoDriver(0x41);
+Adafruit_PWMServoDriver pwm2 = Adafruit_PWMServoDriver(0x42);
+
+Adafruit_PWMServoDriver PWM_DRIVER[] = {pwm0, pwm1, pwm2};
+
+
+struct PIN_CH
+{
+  Adafruit_PWMServoDriver DRIVER_NUM; 
+  int PIN_NUM;
+};
+
+PIN_CH CH[50];
+
+PIN_CH CH0 = {pwm0, 0};
+
+
+
+
+#define SERVOMIN  400 // This is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX  3900 // This is the 'maximum' pulse length count (out of 4096)
+#define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
+#define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
+#define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
+
+// our servo # counter
+uint8_t servonum = 0;
+
 
 bool MIDI_MONITOR = false;
 
@@ -187,31 +218,114 @@ void broadcast_command( void *pvParameters ) {
   vTaskDelete ( NULL );
 }
 
-
-// Demo demos[] = {drawFontFaceDemo, drawRectDemo, drawProgressBarDemo};
-// int demoLength = (sizeof(demos) / sizeof(Demo));
+void setServoPulse(uint8_t n, double pulse) {
+  double pulselength;
+  
+  pulselength = 1000000;   // 1,000,000 us per second
+  pulselength /= SERVO_FREQ;   // Analog servos run at ~60 Hz updates
+  Serial.print(pulselength); Serial.println(" us per period"); 
+  pulselength /= 4096;  // 12 bits of resolution
+  Serial.print(pulselength); Serial.println(" us per bit"); 
+  pulse *= 1000000;  // convert input seconds to us
+  pulse /= pulselength;
+  Serial.println(pulse);
+  pwm0.setPWM(n, 0, pulse);
+}
 
 void setup() {
   Serial.begin(38400);
 
-  // display.init();
-  // display.flipScreenVertically();
-  // display.setFont(ArialMT_Plain_10);
-
+  Wire.begin(SDA, SCL);
+  Wire.setClock(400000);
 
   pinMode(LED_BUILTIN,OUTPUT);
+  pwm0.begin();
+  pwm0.setOscillatorFrequency(25000000);
+  pwm0.setPWMFreq(SERVO_FREQ);
+
+  pwm1.begin();
+  pwm1.setOscillatorFrequency(25000000);
+  pwm1.setPWMFreq(SERVO_FREQ);
+
+  pwm2.begin();
+  pwm2.setOscillatorFrequency(25000000);
+  pwm2.setPWMFreq(SERVO_FREQ);
+
+ 
+
+ 
+
+ 
 
   xQueue = xQueueCreate(100, sizeof(int[2]));
   if(xQueue != NULL){
-    // xTaskCreatePinnedToCore( MQTTkeepalive, "MQTTkeepalive", 1024*15, NULL, 3, NULL, 0 );
-    xTaskCreatePinnedToCore(lcd_display, "lcd_display", 1024*6, NULL, 3, NULL, 1);
+    // xTaskCreatePinnedToCore(lcd_display, "lcd_display", 1024*6, NULL, 3, NULL, 1);
     xTaskCreatePinnedToCore(broadcast_command, "broadcast_command", 1024*15, NULL, 4, NULL, 1);
   }
   // vTaskDelete(NULL);
 }
 
+bool initial = false;
+
 void loop() {
+
+  // if (!initial){
+    for(int i = 0; i<3; i++){
+       for(int j = 0; j<16; j++){
+         PIN_CH CH[(15*i)+j] = {PWM_DRIVER[i], j};
+       }
+     }
+     initial = true;
+  // }
+
   if (Serial.available()) {
+    String n =Serial.readStringUntil('\n');
+    int a = n.toInt();
+    Serial.println(a);
+
+    CH[0].DRIVER_NUM.writeMicroseconds(CH[0].PIN_NUM, a);
+
+    // CH0.DRIVER_NUM.writeMicroseconds(CH0.PIN_NUM, a);
+
+    // for (int i = 0; i<16; i++){
+        // pwm0.writeMicroseconds(i, a);  //400 to 2700
+        // pwm1.writeMicroseconds(i, a);  //400 to 2700
+        // pwm2.writeMicroseconds(i, a);  //400 to 2700
+
+        // CH[0].DRIVER_NUM.writeMicroseconds(CH[0].PIN_NUM, a);
+        
+      // }
+
+    // pwm++;
+
+    // if (pwm = 0){
+    //   for (int i = 0; i<16; i++){
+    //     pwm0.writeMicroseconds(i, a);  //400 to 2700
+    //     // pwm1.writeMicroseconds(i, a);  //400 to 2700
+    //     // pwm2.writeMicroseconds(i, a);  //400 to 2700
+    //   }
+    // }
+    // else if (pwm = 1){
+    //   for (int i = 0; i<16; i++){
+    //     // pwm0.writeMicroseconds(i, a);  //400 to 2700
+    //     pwm1.writeMicroseconds(i, a);  //400 to 2700
+    //     // pwm2.writeMicroseconds(i, a);  //400 to 2700
+    //   }
+    // }
+
+    // else if (pwm = 2){
+    //   for (int i = 0; i<16; i++){
+    //     // pwm0.writeMicroseconds(i, a);  //400 to 2700
+    //     // pwm1.writeMicroseconds(i, a);  //400 to 2700
+    //     pwm2.writeMicroseconds(i, a);  //400 to 2700
+    //   }
+    // }
+
+    // else {
+    //   pwm = 0;
+    // }
+    
+
     rx_state++;
     switch (rx_state) {
       case 1: 
