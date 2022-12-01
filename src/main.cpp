@@ -6,109 +6,34 @@
 
 #include <Adafruit_PWMServoDriver.h>
 
-Adafruit_PWMServoDriver pwm0 = Adafruit_PWMServoDriver(0x40);
-Adafruit_PWMServoDriver pwm1 = Adafruit_PWMServoDriver(0x41);
-Adafruit_PWMServoDriver pwm2 = Adafruit_PWMServoDriver(0x42);
-
-Adafruit_PWMServoDriver PWM_DRIVER[] = {pwm0, pwm1, pwm2};
-
-
-struct PIN_CH
-{
-  Adafruit_PWMServoDriver DRIVER_NUM; 
-  int PIN_NUM;
-};
-
-PIN_CH CH[50];
-
-PIN_CH CH0 = {pwm0, 0};
-
-
-
-
 #define SERVOMIN  400 // This is the 'minimum' pulse length count (out of 4096)
 #define SERVOMAX  3900 // This is the 'maximum' pulse length count (out of 4096)
 #define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
 #define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
 #define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
 
-// our servo # counter
-uint8_t servonum = 0;
 
-
-bool MIDI_MONITOR = false;
-
-int demoMode = 0;
-int counter = 1;
-
-int ROW_X = 10;
-int ROW_Y = 10;
-int count = 0;
-
-long timeSinceLastModeSwitch = 0;
-
-QueueHandle_t xQueue;
-
-long lastMsg = 0;
-int rx_state = 0;
-
-byte cc_type1;
-byte cc_type2;
-byte cc_val1;
-byte cc_val2;
-
-
-class Channel {
-  private:
-  /* data */
-  public:
-  u_int8_t note_number;
-  u_int8_t channel_number;
-  String note_string;
-
-  Channel(/* args */);
-  ~Channel();
-
-  void setNoteNumber(u_int8_t note_number){
-    Channel::note_number = note_number;
-  }
-  void setChannelNumber(u_int8_t channel_number){
-    Channel::channel_number = channel_number;
-  }
-
-  uint8_t getNoteNumber(){
-    return Channel::note_number;
-  }
-  uint8_t getChannelNumber(){
-    return Channel::channel_number;
-  }
+// DRIVER & CHANNEL VARIABLE
+Adafruit_PWMServoDriver PWM_DRIVER[] = {
+      Adafruit_PWMServoDriver(0x40),
+      Adafruit_PWMServoDriver(0x41),
+      Adafruit_PWMServoDriver(0x42)
 };
+struct PIN_CH {
+  Adafruit_PWMServoDriver DRIVER_NUM; 
+  uint8_t PIN_NUM;
+  bool isMotor;
+};
+PIN_CH CH[50];
+const uint8_t CHANNEL[] = {30, 31, 32, 33, 34, 35,
+                            36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+                            48, 49, 50, 51, 52, 53, 54, 
+                            
+                            0, 1, 2, 3, 4, 5,
+                            6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+                            18, 19, 20, 21, 22};
 
-Channel::Channel(/* args */)
-{
-}
-
-Channel::~Channel()
-{
-}
-
-
-int servoPin1 = 12;
-int servoPin2 = 13;
-
-String DISPLAY_DATA[5][3]= {
-                  {"","",""},
-                  {"","",""},
-                  {"","",""},
-                  {"","",""},
-                  {"","",""}};
-
-const String MENU[] = {"Monitor", "Pin Config", "About"};
-uint8_t SELECTED = 0;
-
-// Servo CHANNEL[] = {myservo};
-
-const String NOTES[] = {"C-2", "C#-2", "D-2","D#-2", "E-2", "F-2", "F#-2", "G-2", "G#-2", "A-2", "A#-2", "B-2",
+const String NOTES[] = {"C-2", "C#-2", "D-2","D#-2", "E-2", "F-2", "F#-2", "G-2", "G#-2", "A-2", "A#-2", "B-2", 
                         "C-1", "C#-1", "D-1","D#-1", "E-1", "F-1", "F#-1", "G-1", "G#-1", "A-1", "A#-1", "B-1",
                         "C0", "C#0", "D0","D#0", "E0", "F0", "F#0", "G0", "G#0", "A0", "A#0", "B0",
                         "C1", "C#1", "D1","D#1", "E1", "F1", "F#1", "G1", "G#1", "A1", "A#1", "B1",
@@ -120,23 +45,65 @@ const String NOTES[] = {"C-2", "C#-2", "D-2","D#-2", "E-2", "F-2", "F#-2", "G-2"
                         "C7", "C#7", "D7","D#7", "E7", "F7", "F#7", "G7", "G#7", "A7", "A#7", "B7",
                         "C8", "C#8", "D8","D#8", "E8", "F8", "F#8", "G8", "G#8", "A8", "A#8", "B8"};
 
+
+// QUEUE & SERIAL MONITOR
+QueueHandle_t xQueue;
+uint8_t rx_state = 0;
+byte cc_type1;
+byte cc_type2;
+byte cc_val1;
+byte cc_val2;
+
+
+// OLED DISPLAY VARIABLE
+String DISPLAY_DATA[5][3]= {
+                  {"","",""},
+                  {"","",""},
+                  {"","",""},
+                  {"","",""},
+                  {"","",""}};
+const String MENU[] = {"Monitor", "Pin Config", "About"};
+uint8_t SELECTED = 0;
+bool MIDI_MONITOR = false;
+u8g2_uint_t ROW_X = 10;
+u8g2_uint_t ROW_Y = 10;
+uint8_t currentState;
+uint8_t lastState = HIGH;
+
+
+
 int velocityToPwm(int velocity){
   return round(map(velocity, 0, 127, 0, 255));
 }
 
-void execute(int channel, int velocity){
-  // myservo.write(velocityToPwm(velocity));
+void execute(uint8_t channel, uint8_t velocity){
+  for(uint8_t i = 0; i < (sizeof(CHANNEL)/sizeof(CHANNEL[0])); i++){
+    if(CHANNEL[i] == channel){
+      if(CH[i].isMotor){
+        CH[i].DRIVER_NUM.setPWM(CH[i].PIN_NUM, 0, map(velocity, 0, 127, 0, 4095));
+      }
+      else{
+        if (velocity > 0 && velocity <= 64){
+          CH[i].DRIVER_NUM.writeMicroseconds(CH[i].PIN_NUM, map(velocity, 0, 64, 1000, 1499));
+        }
+        else if (velocity > 64){
+          CH[i].DRIVER_NUM.writeMicroseconds(CH[i].PIN_NUM, map(velocity, 65, 127, 1501, 2000));
+        }
+        else{
+          CH[i].DRIVER_NUM.writeMicroseconds(CH[i].PIN_NUM, 1500);
+        }
+      }
+    }
+  }
 }
-
 
 int bytesToInt(int l_highByte, int l_lowByte) {
   return ((unsigned int)l_highByte << 8) + l_lowByte;
 }
-int currentState;
-int lastState = HIGH;
+
+
 void lcd_display( void *pvParameters){
   // vTaskDelay(2000/portTICK_PERIOD_MS);
-  
   pinMode(25, INPUT_PULLUP);
   U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
   u8g2.begin();
@@ -149,10 +116,9 @@ void lcd_display( void *pvParameters){
       if (SELECTED > 2){
         SELECTED = 0;
       }
-      
     }
     lastState = currentState;
-    
+
     u8g2.clearBuffer();					// clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr);	// choose a suitable font
     if(MIDI_MONITOR){
@@ -167,9 +133,10 @@ void lcd_display( void *pvParameters){
           }
         }
     }
+
     else {
       u8g2.drawStr(20, 10, "MENU");
-      for(int i=0; i<3; i++){
+      for(uint8_t i=0; i<3; i++){
         if (i == SELECTED){
           u8g2.drawStr(10,  10 * (i+2), ">");
         }
@@ -177,22 +144,21 @@ void lcd_display( void *pvParameters){
       }
     }
     
-    u8g2.sendBuffer();					// transfer internal memory to the display
+    u8g2.sendBuffer();
     // vTaskDelay(1000);
   }
 }
 
 void broadcast_command( void *pvParameters ) {
-  int ReceivedValue[] = {0,0};
+  int ReceivedValue[] = { 0, 0 };
   String command = "";
   
   for (;;){
     if (xQueueReceive( xQueue, &ReceivedValue, portMAX_DELAY ) == pdPASS) {
-      count = count + 1;
       
       if (sizeof(DISPLAY_DATA) > 4){
         // int b[] = {count+1, count+5, count+5};
-        for(int i = 4; i>0; i--){
+        for(uint8_t i = 4; i>0; i--){
           DISPLAY_DATA[i][0] = DISPLAY_DATA[i-1][0];
           DISPLAY_DATA[i][1] = DISPLAY_DATA[i-1][1];
           DISPLAY_DATA[i][2] = DISPLAY_DATA[i-1][2];
@@ -210,26 +176,10 @@ void broadcast_command( void *pvParameters ) {
       Serial.print(" ");
       Serial.println(lowByte(ReceivedValue[1]));
 
-      if (ReceivedValue[0] == 47){
-        execute(0, ReceivedValue[1]);
-      }
+      execute(ReceivedValue[0], ReceivedValue[1]);
     }
   }
   vTaskDelete ( NULL );
-}
-
-void setServoPulse(uint8_t n, double pulse) {
-  double pulselength;
-  
-  pulselength = 1000000;   // 1,000,000 us per second
-  pulselength /= SERVO_FREQ;   // Analog servos run at ~60 Hz updates
-  Serial.print(pulselength); Serial.println(" us per period"); 
-  pulselength /= 4096;  // 12 bits of resolution
-  Serial.print(pulselength); Serial.println(" us per bit"); 
-  pulse *= 1000000;  // convert input seconds to us
-  pulse /= pulselength;
-  Serial.println(pulse);
-  pwm0.setPWM(n, 0, pulse);
 }
 
 void setup() {
@@ -239,23 +189,23 @@ void setup() {
   Wire.setClock(400000);
 
   pinMode(LED_BUILTIN,OUTPUT);
-  pwm0.begin();
-  pwm0.setOscillatorFrequency(25000000);
-  pwm0.setPWMFreq(SERVO_FREQ);
 
-  pwm1.begin();
-  pwm1.setOscillatorFrequency(25000000);
-  pwm1.setPWMFreq(SERVO_FREQ);
+  for(uint8_t i = 0; i<3; i++){
+    PWM_DRIVER[i].begin();
+    PWM_DRIVER[i].setOscillatorFrequency(25000000);
+    PWM_DRIVER[i].setPWMFreq(SERVO_FREQ);
+  }
 
-  pwm2.begin();
-  pwm2.setOscillatorFrequency(25000000);
-  pwm2.setPWMFreq(SERVO_FREQ);
+  for (uint8_t driver_index = 0; driver_index < 3; driver_index++){
+    for(uint8_t pin_index = 0; pin_index < 17; pin_index++){
+      CH[(16 * driver_index) + pin_index] = { PWM_DRIVER[driver_index], pin_index, true};
+    }
+  }
 
- 
-
- 
-
- 
+  // CH[25].isMotor = false;
+  // CH[26].isMotor = false;
+  // CH[27].isMotor = false;
+  // CH[28].isMotor = false;
 
   xQueue = xQueueCreate(100, sizeof(int[2]));
   if(xQueue != NULL){
@@ -265,67 +215,8 @@ void setup() {
   // vTaskDelete(NULL);
 }
 
-bool initial = false;
-
 void loop() {
-
-  // if (!initial){
-    for(int i = 0; i<3; i++){
-       for(int j = 0; j<16; j++){
-         PIN_CH CH[(15*i)+j] = {PWM_DRIVER[i], j};
-       }
-     }
-     initial = true;
-  // }
-
   if (Serial.available()) {
-    String n =Serial.readStringUntil('\n');
-    int a = n.toInt();
-    Serial.println(a);
-
-    CH[0].DRIVER_NUM.writeMicroseconds(CH[0].PIN_NUM, a);
-
-    // CH0.DRIVER_NUM.writeMicroseconds(CH0.PIN_NUM, a);
-
-    // for (int i = 0; i<16; i++){
-        // pwm0.writeMicroseconds(i, a);  //400 to 2700
-        // pwm1.writeMicroseconds(i, a);  //400 to 2700
-        // pwm2.writeMicroseconds(i, a);  //400 to 2700
-
-        // CH[0].DRIVER_NUM.writeMicroseconds(CH[0].PIN_NUM, a);
-        
-      // }
-
-    // pwm++;
-
-    // if (pwm = 0){
-    //   for (int i = 0; i<16; i++){
-    //     pwm0.writeMicroseconds(i, a);  //400 to 2700
-    //     // pwm1.writeMicroseconds(i, a);  //400 to 2700
-    //     // pwm2.writeMicroseconds(i, a);  //400 to 2700
-    //   }
-    // }
-    // else if (pwm = 1){
-    //   for (int i = 0; i<16; i++){
-    //     // pwm0.writeMicroseconds(i, a);  //400 to 2700
-    //     pwm1.writeMicroseconds(i, a);  //400 to 2700
-    //     // pwm2.writeMicroseconds(i, a);  //400 to 2700
-    //   }
-    // }
-
-    // else if (pwm = 2){
-    //   for (int i = 0; i<16; i++){
-    //     // pwm0.writeMicroseconds(i, a);  //400 to 2700
-    //     // pwm1.writeMicroseconds(i, a);  //400 to 2700
-    //     pwm2.writeMicroseconds(i, a);  //400 to 2700
-    //   }
-    // }
-
-    // else {
-    //   pwm = 0;
-    // }
-    
-
     rx_state++;
     switch (rx_state) {
       case 1: 
@@ -333,7 +224,7 @@ void loop() {
         if(cc_type1 != 255) {  
           rx_state = 0;
         }
-      break;
+        break;
       case 2:      
         cc_type2 = Serial.read();
         break;        
@@ -346,8 +237,8 @@ void loop() {
 
         int control = cc_type2;
         int value = bytesToInt(cc_val1, cc_val2);
-        int a[] = {control, value};
-        xQueueSend( xQueue, &a, portMAX_DELAY);
+        int DATA_QUEUE[] = {control, value};
+        xQueueSend( xQueue, &DATA_QUEUE, portMAX_DELAY);
     }
   }
 }
