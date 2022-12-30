@@ -17,21 +17,25 @@
 Adafruit_PWMServoDriver PWM_DRIVER[] = {
       Adafruit_PWMServoDriver(0x40),
       Adafruit_PWMServoDriver(0x41),
-      Adafruit_PWMServoDriver(0x42)
+      Adafruit_PWMServoDriver(0x42),
+      Adafruit_PWMServoDriver(0x43)
 };
 struct PIN_CH {
   Adafruit_PWMServoDriver DRIVER_NUM; 
   uint8_t PIN_NUM;
   bool isMotor;
 };
-PIN_CH CH[50];
-const uint8_t CHANNEL[] = {30, 31, 32, 33, 34, 35,
-                            36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
-                            48, 49, 50, 51, 52, 53, 54, 
+PIN_CH CH[65];
+const uint8_t CHANNEL[] = {36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+                            48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+                            61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73,
+                            74,
                             
-                            0, 1, 2, 3, 4, 5,
-                            6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-                            18, 19, 20, 21, 22};
+                            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+                            24};
+
+
 
 const String NOTES[] = {"C-2", "C#-2", "D-2","D#-2", "E-2", "F-2", "F#-2", "G-2", "G#-2", "A-2", "A#-2", "B-2", 
                         "C-1", "C#-1", "D-1","D#-1", "E-1", "F-1", "F#-1", "G-1", "G#-1", "A-1", "A#-1", "B-1",
@@ -84,10 +88,10 @@ void execute(uint8_t channel, uint8_t velocity){
       }
       else{
         if (velocity > 0 && velocity <= 64){
-          CH[i].DRIVER_NUM.writeMicroseconds(CH[i].PIN_NUM, map(velocity, 0, 64, 1000, 1499));
+          CH[i].DRIVER_NUM.writeMicroseconds(CH[i].PIN_NUM, map(velocity, 0, 64, 1300, 1499));
         }
         else if (velocity > 64){
-          CH[i].DRIVER_NUM.writeMicroseconds(CH[i].PIN_NUM, map(velocity, 65, 127, 1501, 2000));
+          CH[i].DRIVER_NUM.writeMicroseconds(CH[i].PIN_NUM, map(velocity, 65, 127, 1501, 1700));
         }
         else{
           CH[i].DRIVER_NUM.writeMicroseconds(CH[i].PIN_NUM, 1500);
@@ -190,22 +194,21 @@ void setup() {
 
   pinMode(LED_BUILTIN,OUTPUT);
 
-  for(uint8_t i = 0; i<3; i++){
+  for(uint8_t i = 0; i<4; i++){
     PWM_DRIVER[i].begin();
     PWM_DRIVER[i].setOscillatorFrequency(25000000);
     PWM_DRIVER[i].setPWMFreq(SERVO_FREQ);
   }
 
-  for (uint8_t driver_index = 0; driver_index < 3; driver_index++){
+  for (uint8_t driver_index = 0; driver_index < 4; driver_index++){
     for(uint8_t pin_index = 0; pin_index < 17; pin_index++){
       CH[(16 * driver_index) + pin_index] = { PWM_DRIVER[driver_index], pin_index, true};
     }
   }
 
-  // CH[25].isMotor = false;
-  // CH[26].isMotor = false;
-  // CH[27].isMotor = false;
-  // CH[28].isMotor = false;
+  for (uint8_t i = 37; i < sizeof(CH)/sizeof(CH[0]); i++){
+    CH[i].isMotor = false;
+  }
 
   xQueue = xQueueCreate(100, sizeof(int[2]));
   if(xQueue != NULL){
