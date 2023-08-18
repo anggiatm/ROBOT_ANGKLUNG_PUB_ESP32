@@ -8,6 +8,21 @@
 
 #include "configuration.h"
 
+#include <esp_now.h>
+#include <WiFi.h>
+
+// Deklarasi variabel
+uint8_t ROBOT_18[] = {0x94, 0xB9, 0x7E, 0xD9, 0x14, 0x50};
+
+typedef struct data_esp_now
+{
+      uint16_t val;
+      uint8_t chan;
+} data_esp_now;
+
+data_esp_now data;
+
+esp_now_peer_info_t peerInfo;
 // #include "midi_config.h"
 // #include "channel.h"
 
@@ -80,13 +95,29 @@ int velocityToPwm(int velocity)
 
 void execute(uint8_t ch, uint8_t vel)
 {
+      if (ch == R6)
+      {
+            data.val = (uint16_t)vel;
+            data.chan = 0;
+            esp_now_send(0, (uint8_t *)&data, sizeof(data_esp_now));
+      }
+
+      if (ch == S5)
+      {
+            data.val = (uint16_t)vel;
+            data.chan = 1;
+            esp_now_send(0, (uint8_t *)&data, sizeof(data_esp_now));
+      }
 
       if (CH[ch].isMotor)
       {
+            // noteToSend = map(vel, 0, 127, 0, 4095);
+
             CH[ch].DRIVER_NUM.setPWM(CH[ch].PIN_NUM, 0, map(vel, 0, 127, 0, 4095));
       }
       else
       {
+
             if (vel > 0 && vel <= 64)
             {
                   CH[ch].DRIVER_NUM.writeMicroseconds(CH[ch].PIN_NUM, map(vel, 0, 64, CH[ch].MIN, CH[ch].CENTER - 1));
@@ -139,13 +170,17 @@ void serial(void *pvParameters)
                         int value = bytesToInt(cc_val1, cc_val2);
                         // int DATA_QUEUE[] = {control, value};
                         // xQueueSend(xQueue, &DATA_QUEUE, portMAX_DELAY);
-                        if (control <= 24)
+                        if (control <= 72)
                         {
-                              CH[control].vel = value;
-                        }
-                        else
-                        {
-                              execute(control, value);
+
+                              if (control <= 24)
+                              {
+                                    CH[control].vel = value;
+                              }
+                              else
+                              {
+                                    execute(control, value);
+                              }
                         }
 
                         Serial.print(255);
@@ -345,8 +380,8 @@ void setup()
       CH[S9].CENTER = 1500;
 
       CH[S10].isMotor = false;
-      CH[S10].MAX = 1750;
-      CH[S10].MIN = 1100;
+      CH[S10].MAX = 1600;
+      CH[S10].MIN = 1150;
       CH[S10].CENTER = 1500;
 
       CH[S11].isMotor = false;
@@ -359,8 +394,8 @@ void setup()
       CH[S12].CENTER = 1500;
 
       CH[S13].isMotor = false;
-      CH[S13].MAX = 1900;
-      CH[S13].MIN = 1100;
+      CH[S13].MAX = 2000;
+      CH[S13].MIN = 1000;
       CH[S13].CENTER = 1500;
 
       CH[S14].isMotor = false;
@@ -376,10 +411,10 @@ void setup()
       CH[S16].MAX = 1800;
       CH[S16].MIN = 1200;
       CH[S16].CENTER = 1500;
-      CH[S17].isMotor = false;
 
-      CH[S17].MAX = 1900;
-      CH[S17].MIN = 1200;
+      CH[S17].isMotor = false;
+      CH[S17].MAX = 2200;
+      CH[S17].MIN = 1300;
       CH[S17].CENTER = 1500;
 
       CH[S18].isMotor = false;
@@ -411,8 +446,8 @@ void setup()
       CH[S23].CENTER = 1500;
 
       CH[S24].isMotor = false;
-      CH[S24].MAX = 1900;
-      CH[S24].MIN = 1200;
+      CH[S24].MAX = 1200;
+      CH[S24].MIN = 1900;
       CH[S24].CENTER = 1500;
 
       CH[S25].isMotor = false;
@@ -420,12 +455,26 @@ void setup()
       CH[S25].MIN = 1200;
       CH[S25].CENTER = 1500;
 
-      // Serial.println(sizeof(CH) / sizeof(CH[0]));
+      WiFi.mode(WIFI_STA);
 
-      // for (int i = 0; i < sizeof(CH) / sizeof(CH[0]); i++)
-      // {
-      //       Serial.println(CH[i].PIN_NUM);
-      // }
+      if (esp_now_init() != ESP_OK)
+      {
+            Serial.println("Error initializing ESP-NOW");
+            return;
+      }
+
+      // esp_now_register_send_cb(OnDataSent);
+
+      // register peer
+      peerInfo.channel = 0;
+      peerInfo.encrypt = false;
+      // register first peer
+      memcpy(peerInfo.peer_addr, ROBOT_18, 6);
+      if (esp_now_add_peer(&peerInfo) != ESP_OK)
+      {
+            Serial.println("Failed to add peer");
+            return;
+      }
 
       // for (uint8_t driver_index = 0; driver_index < 4; driver_index++)
       // {
