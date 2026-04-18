@@ -8,21 +8,13 @@
 
 #include "configuration.h"
 
-#include <esp_now.h>
+// #include <esp_now.h>
 #include <WiFi.h>
 
 // Deklarasi variabel
-uint8_t ROBOT_18[] = {0x94, 0xB9, 0x7E, 0xD9, 0x14, 0x50};
+uint8_t ROBOT_MIMI[] = {0xA0, 0xB7, 0x65, 0x63, 0x62, 0x08};
+// A0:B7:65:63:62:08
 
-typedef struct data_esp_now
-{
-      uint16_t val;
-      uint8_t chan;
-} data_esp_now;
-
-data_esp_now data;
-
-esp_now_peer_info_t peerInfo;
 // #include "midi_config.h"
 // #include "channel.h"
 
@@ -95,19 +87,12 @@ int velocityToPwm(int velocity)
 
 void execute(uint8_t ch, uint8_t vel)
 {
-      if (ch == R6)
-      {
-            data.val = (uint16_t)vel;
-            data.chan = 0;
-            esp_now_send(0, (uint8_t *)&data, sizeof(data_esp_now));
-      }
-
-      if (ch == S5)
-      {
-            data.val = (uint16_t)vel;
-            data.chan = 1;
-            esp_now_send(0, (uint8_t *)&data, sizeof(data_esp_now));
-      }
+      // if (ch == R25)
+      // {
+      //       data.val = (uint16_t)vel;
+      //       data.chan = 0;
+      //       esp_now_send(0, (uint8_t *)&data, sizeof(data_esp_now));
+      // }
 
       if (CH[ch].isMotor)
       {
@@ -190,6 +175,60 @@ void serial(void *pvParameters)
                         Serial.print(highByte(value));
                         Serial.print(" ");
                         Serial.println(lowByte(value));
+                  }
+            }
+      }
+      vTaskDelete(NULL);
+}
+
+void serial_debugger(void *pvParameters)
+{
+      vTaskDelay(2000 / portTICK_PERIOD_MS);
+      int incomingByte = 0;
+      for (;;)
+      {
+            if (Serial.available())
+            {
+                  rx_state++;
+                  switch (rx_state)
+                  {
+                  case 1:
+                        cc_type1 = Serial.read();
+                        digitalWrite(LED_BUILTIN, HIGH);
+                        if (cc_type1 != 255)
+                        {
+                              rx_state = 0;
+                        }
+                        break;
+                  case 2:
+                        cc_type2 = Serial.read();
+                        break;
+                  case 3:
+                        cc_val1 = Serial.read();
+                        digitalWrite(LED_BUILTIN, LOW);
+                        rx_state = 0;
+
+                        int control = cc_type2;
+                        int value = cc_val1;
+                        // int DATA_QUEUE[] = {control, value};
+                        // xQueueSend(xQueue, &DATA_QUEUE, portMAX_DELAY);
+                        if (control <= 72)
+                        {
+                              if (control <= 24)
+                              {
+                                    CH[control].vel = value;
+                              }
+                              else
+                              {
+                                    execute(control, value);
+                              }
+                        }
+
+                        byte header = 255;
+
+                        Serial2.write(header);
+                        Serial2.write(cc_type2);
+                        Serial2.write(cc_val1);
                   }
             }
       }
@@ -288,11 +327,24 @@ void run_S2(void *pvParameters)
 void setup()
 {
       Serial.begin(38400);
+      Serial2.begin(38400);
 
       Wire.begin(SDA, SCL);
       Wire.setClock(400000);
 
       pinMode(LED_BUILTIN, OUTPUT);
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(100);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(100);
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(100);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(100);
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(100);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(100);
 
       // MIDI_CONFIG.init_driver();
 
@@ -455,27 +507,6 @@ void setup()
       CH[S25].MIN = 1200;
       CH[S25].CENTER = 1500;
 
-      WiFi.mode(WIFI_STA);
-
-      if (esp_now_init() != ESP_OK)
-      {
-            Serial.println("Error initializing ESP-NOW");
-            return;
-      }
-
-      // esp_now_register_send_cb(OnDataSent);
-
-      // register peer
-      peerInfo.channel = 0;
-      peerInfo.encrypt = false;
-      // register first peer
-      memcpy(peerInfo.peer_addr, ROBOT_18, 6);
-      if (esp_now_add_peer(&peerInfo) != ESP_OK)
-      {
-            Serial.println("Failed to add peer");
-            return;
-      }
-
       // for (uint8_t driver_index = 0; driver_index < 4; driver_index++)
       // {
       //       for (uint8_t pin_index = 0; pin_index < 17; pin_index++)
@@ -496,7 +527,8 @@ void setup()
       // if (xQueue != NULL)
       // {
       // xTaskCreatePinnedToCore(lcd_display, "lcd_display", 1024*6, NULL, 3, NULL, 1);
-      xTaskCreatePinnedToCore(serial, "Serial", 1024 * 8, NULL, 4, NULL, 1);
+      // xTaskCreatePinnedToCore(serial, "Serial", 1024 * 8, NULL, 4, NULL, 1);
+      xTaskCreatePinnedToCore(serial_debugger, "Serial", 1024 * 8, NULL, 4, NULL, 1);
       // xTaskCreatePinnedToCore(broadcast_command, "broadcast_command", 1024 * 15, NULL, 4, NULL, 1);
       // xTaskCreatePinnedToCore(run_S1, "S1", 1024 * 2, NULL, 4, NULL, 1);
       xTaskCreatePinnedToCore(run_S2, "S2", 1024 * 8, NULL, 4, NULL, 1);
